@@ -38,38 +38,38 @@ fn setup_env() -> (Env, FeeCalculatorContractClient<'static>, Address, Address) 
 
 #[test]
 fn test_fee_rate_drops_when_volume_crosses_tier_threshold() {
-    let (_env, client, _admin, merchant) = setup_env();
+    let (_env, client, admin, merchant) = setup_env();
 
     // Volume = 900, still tier 1 (150 bps)
-    let (_, _, bps_before) = client.calculate_fee(&merchant, &900);
+    let (_, _, bps_before) = client.calculate_fee(&admin, &merchant, &900);
     assert_eq!(bps_before, 150);
 
     // Volume = 1000, enters tier 2 (120 bps)
-    let (_, _, bps_after) = client.calculate_fee(&merchant, &100);
+    let (_, _, bps_after) = client.calculate_fee(&admin, &merchant, &100);
     assert_eq!(bps_after, 120);
 }
 
 #[test]
 fn test_highest_tier_applies_at_exact_boundary() {
-    let (_env, client, _admin, merchant) = setup_env();
+    let (_env, client, admin, merchant) = setup_env();
 
-    client.calculate_fee(&merchant, &9_999);
-    let (_, _, bps) = client.calculate_fee(&merchant, &1);
+    client.calculate_fee(&admin, &merchant, &9_999);
+    let (_, _, bps) = client.calculate_fee(&admin, &merchant, &1);
     assert_eq!(bps, 100);
 }
 
 #[test]
 fn test_volume_resets_after_30_days_by_ledger_count() {
-    let (env, client, _admin, merchant) = setup_env();
+    let (env, client, admin, merchant) = setup_env();
 
-    client.calculate_fee(&merchant, &2_000); // puts merchant into 120 bps tier
-    let (_, _, bps_before_reset) = client.calculate_fee(&merchant, &1);
+    client.calculate_fee(&admin, &merchant, &2_000); // puts merchant into 120 bps tier
+    let (_, _, bps_before_reset) = client.calculate_fee(&admin, &merchant, &1);
     assert_eq!(bps_before_reset, 120);
 
     // Move ledger beyond 30-day window (172800 ledgers).
     env.ledger().with_mut(|li| li.sequence_number += 172_800);
 
-    let (_, _, bps_after_reset) = client.calculate_fee(&merchant, &100);
+    let (_, _, bps_after_reset) = client.calculate_fee(&admin, &merchant, &100);
     assert_eq!(bps_after_reset, 150);
 }
 
@@ -109,4 +109,21 @@ fn test_non_admin_cannot_update_fee_tiers() {
     ];
 
     client.set_fee_tiers(&random, &new_tiers);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized caller")]
+fn test_unauthorized_caller_cannot_calculate_fee() {
+    let (env, client, _admin, merchant) = setup_env();
+    let attacker = Address::generate(&env);
+
+    client.calculate_fee(&attacker, &merchant, &1_000);
+}
+
+#[test]
+fn test_admin_can_calculate_fee() {
+    let (_env, client, admin, merchant) = setup_env();
+
+    let (_, _, bps) = client.calculate_fee(&admin, &merchant, &1_000);
+    assert_eq!(bps, 120);
 }
