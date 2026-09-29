@@ -40,6 +40,13 @@ pub struct TierAppliedEvent {
     pub net: i128,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FeeTiersUpdatedEvent {
+    pub admin: Address,
+    pub tiers: Vec<FeeTier>,
+}
+
 #[contract]
 pub struct FeeCalculatorContract;
 
@@ -56,6 +63,14 @@ impl FeeCalculatorContract {
         Self::require_admin(&env, &caller);
         Self::validate_tiers(&tiers);
         env.storage().instance().set(&DataKey::FeeTiers, &tiers);
+
+        env.events().publish(
+            ("FEE", "tiers_updated"),
+            FeeTiersUpdatedEvent {
+                admin: caller,
+                tiers,
+            },
+        );
     }
 
     pub fn set_settlement_caller(env: Env, caller: Address, settlement_caller: Address) {

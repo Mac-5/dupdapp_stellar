@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use crate::{FeeCalculatorContract, FeeCalculatorContractClient, FeeTier};
-use soroban_sdk::{testutils::{Address as _, Ledger}, vec, Address, Env};
+use crate::{FeeCalculatorContract, FeeCalculatorContractClient, FeeTier, FeeTiersUpdatedEvent};
+use soroban_sdk::{testutils::{Address as _, Events as _, Ledger}, vec, Address, Env, IntoVal};
 
 fn setup_env() -> (Env, FeeCalculatorContractClient<'static>, Address, Address) {
     let env = Env::default();
@@ -113,6 +113,41 @@ fn test_admin_can_update_fee_tiers() {
     client.set_fee_tiers(&admin, &new_tiers);
     let stored = client.get_fee_tiers();
     assert_eq!(stored, new_tiers);
+}
+
+#[test]
+fn test_set_fee_tiers_emits_fee_tiers_updated_event() {
+    let (env, client, admin, _merchant) = setup_env();
+
+    let new_tiers = vec![
+        &env,
+        FeeTier {
+            threshold_usdc: 0,
+            fee_bps: 200,
+        },
+        FeeTier {
+            threshold_usdc: 5_000,
+            fee_bps: 80,
+        },
+    ];
+
+    client.set_fee_tiers(&admin, &new_tiers);
+
+    let expected = FeeTiersUpdatedEvent {
+        admin: admin.clone(),
+        tiers: new_tiers.clone(),
+    };
+
+    let events = env.events().all();
+    let last = events.last().unwrap();
+    assert_eq!(
+        last,
+        (
+            client.address.clone(),
+            (soroban_sdk::symbol_short!("fee_tiers"),).into_val(&env),
+            expected.into_val(&env),
+        )
+    );
 }
 
 #[test]
