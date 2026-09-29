@@ -148,3 +148,21 @@ fn test_admin_can_calculate_fee() {
     let (_, _, bps) = client.calculate_fee(&admin, &merchant, &1_000);
     assert_eq!(bps, 120);
 }
+
+#[test]
+#[should_panic(expected = "Unauthorized caller")]
+fn test_attacker_cannot_grief_merchant_fee_tier() {
+    let (_env, client, admin, merchant) = setup_env();
+    let attacker = Address::generate(&env);
+
+    // Attacker attempts to push the victim merchant's volume past the tier
+    // threshold with no real settlement activity.
+    client.calculate_fee(&attacker, &merchant, &1_000);
+
+    // The victim's tracked volume must be untouched by the rejected call.
+    assert_eq!(client.get_merchant_volume(&merchant), 0);
+
+    // A legitimate admin call still advances volume and applies the tier.
+    let (_, _, bps) = client.calculate_fee(&admin, &merchant, &1_000);
+    assert_eq!(bps, 120);
+}
