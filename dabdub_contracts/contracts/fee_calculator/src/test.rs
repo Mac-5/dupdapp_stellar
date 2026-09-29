@@ -74,6 +74,27 @@ fn test_volume_resets_after_30_days_by_ledger_count() {
 }
 
 #[test]
+fn test_get_merchant_volume_is_read_only_after_window_elapsed() {
+    let (env, client, admin, merchant) = setup_env();
+
+    client.calculate_fee(&admin, &merchant, &2_000);
+    assert_eq!(client.get_merchant_volume(&merchant), 2_000);
+
+    // Move ledger beyond 30-day window (172800 ledgers).
+    env.ledger().with_mut(|li| li.sequence_number += 172_800);
+
+    // The getter must report the windowed (reset) value without persisting it.
+    assert_eq!(client.get_merchant_volume(&merchant), 0);
+    // A second read must observe the same value, proving no write-back occurred.
+    assert_eq!(client.get_merchant_volume(&merchant), 0);
+
+    // The persisted volume is still the pre-reset value; only
+    // update_and_get_volume (via calculate_fee) performs the reset-and-persist.
+    let (_, _, bps) = client.calculate_fee(&admin, &merchant, &100);
+    assert_eq!(bps, 150);
+}
+
+#[test]
 fn test_admin_can_update_fee_tiers() {
     let (env, client, admin, _merchant) = setup_env();
 

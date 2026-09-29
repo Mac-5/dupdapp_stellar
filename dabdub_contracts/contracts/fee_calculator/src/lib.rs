@@ -108,10 +108,15 @@ impl FeeCalculatorContract {
         (fee, net, fee_bps)
     }
 
+    /// Read-only query: returns the merchant's current 30-day windowed volume.
+    /// If the window has elapsed, the windowed (reset) value is computed in
+    /// memory and returned without writing back to storage. The actual
+    /// reset-and-persist happens in `update_and_get_volume` during
+    /// `calculate_fee`.
     pub fn get_merchant_volume(env: Env, merchant: Address) -> MerchantVolume {
         let current_ledger = env.ledger().sequence();
         let key = DataKey::MerchantVolume(merchant);
-        let mut data = env
+        let data = env
             .storage()
             .persistent()
             .get::<DataKey, MerchantVolume>(&key)
@@ -121,12 +126,13 @@ impl FeeCalculatorContract {
             });
 
         if current_ledger.saturating_sub(data.window_start_ledger) >= LEDGERS_PER_30_DAYS {
-            data.window_start_ledger = current_ledger;
-            data.volume_usdc = 0;
-            env.storage().persistent().set(&key, &data);
+            MerchantVolume {
+                window_start_ledger: current_ledger,
+                volume_usdc: 0,
+            }
+        } else {
+            data
         }
-
-        data
     }
 
     fn require_admin(env: &Env, caller: &Address) {
