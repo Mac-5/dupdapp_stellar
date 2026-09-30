@@ -61,8 +61,18 @@ fn test_fee_rate_drops_when_volume_crosses_tier_threshold() {
 fn test_highest_tier_applies_at_exact_boundary() {
     let (_env, client, _admin, merchant, settlement_caller) = setup_env();
 
-    client.calculate_fee(&settlement_caller, &merchant, &9_999);
-    let (_, _, bps) = client.calculate_fee(&settlement_caller, &merchant, &1);
+    // Volume = 900, still tier 1 (150 bps)
+    let (_, _, bps_before) = client.calculate_fee(&settlement_caller, &merchant, &900);
+    assert_eq!(bps_before, 150);
+
+    // Volume = 1000, enters tier 2 (120 bps)
+    let (_, _, bps_after) = client.calculate_fee(&settlement_caller, &merchant, &100);
+    assert_eq!(bps_after, 120);
+}
+
+#[test]
+fn test_highest_tier_applies_at_exact_boundary() {
+
     assert_eq!(bps, 100);
 }
 
@@ -73,9 +83,21 @@ fn test_volume_resets_after_30_days_by_ledger_count() {
     client.calculate_fee(&settlement_caller, &merchant, &2_000); // puts merchant into 120 bps tier
     let (_, _, bps_before_reset) =
         client.calculate_fee(&settlement_caller, &merchant, &1);
+
     assert_eq!(bps_before_reset, 120);
 
-    // Move ledger beyond 30-day window (172800 ledgers).
+    env.ledger().with_mut(|li| li.sequence_number += 172_800);
+
+    let (_, _, bps_after_reset) =
+        client.calculate_fee(&settlement_caller, &merchant, &100);
+    assert_eq!(bps_after_reset, 150);
+}
+
+#[test]
+fn test_admin_can_update_fee_tiers() {
+    let (env, client, admin, _merchant, _settlement) = setup_env
+    assert_eq!(bps_before_reset, 120);
+
     env.ledger().with_mut(|li| li.sequence_number += 172_800);
 
     let (_, _, bps_after_reset) =
@@ -119,6 +141,27 @@ fn test_non_admin_cannot_update_fee_tiers() {
     ];
 
     client.set_fee_tiers(&random, &new_tiers);
+}
+
+#[test]
+fn test_admin_can_set_settlement_caller() {
+    let (env, client, admin, _merchant, _settlement) = setup_env();
+    let new_settlement = Address::generate(&env);
+    client.set_settlement_caller(&admin, &new_settlement);
+    // Confirm the new settlement caller is accepted by calculate_fee
+    let merchant = Address::generate(&env);
+    let (fee, net, bps) = client.calculate_fee(&new_settlement, &merchant, &500);
+    assert_eq!(bps, 150);
+    assert!(fee > 0);
+    assert!(net > 0);
+}
+
+#[test]
+#[should_panic(expected = "caller is not the authorized settlement contract")]
+fn test_non_settlement_caller_cannot_calculate_fee() {
+    let (env, client, _admin, merchant, _settlement) = setup_env();
+    let random = Address::generate(&env);
+    client.calculate_fee(&random, &merchant, &500);
 }
 
 #[test]
@@ -187,4 +230,6 @@ fn test_get_settlement_caller_returns_set_address() {
     let new_caller = Address::generate(&env);
     client.set_settlement_caller(&admin, &new_caller);
     assert_eq!(client.get_settlement_caller(), Some(new_caller));
+}
+
 }

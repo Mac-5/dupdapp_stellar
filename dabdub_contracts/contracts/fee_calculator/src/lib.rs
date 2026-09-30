@@ -85,6 +85,7 @@ impl FeeCalculatorContract {
     ) -> (i128, i128, u32) {
         caller.require_auth();
         Self::require_authorized_caller(&env, &caller);
+
         if amount <= 0 {
             panic!("amount must be > 0");
         }
