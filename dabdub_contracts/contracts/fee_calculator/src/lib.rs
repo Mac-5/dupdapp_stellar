@@ -79,6 +79,18 @@ impl FeeCalculatorContract {
         env.storage().instance().set(&DataKey::SettlementCaller, &settlement_caller);
     }
 
+    pub fn set_settlement_caller(env: Env, caller: Address, settlement_caller: Address) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+        env.storage()
+            .instance()
+            .set(&DataKey::SettlementCaller, &settlement_caller);
+    }
+
+    pub fn get_settlement_caller(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::SettlementCaller)
+    }
+
     pub fn get_fee_tiers(env: Env) -> Vec<FeeTier> {
         env.storage()
             .instance()
@@ -93,7 +105,7 @@ impl FeeCalculatorContract {
         amount: i128,
     ) -> (i128, i128, u32) {
         caller.require_auth();
-        Self::require_admin_or_settlement_caller(&env, &caller);
+        Self::require_authorized_caller(&env, &caller);
 
         if amount <= 0 {
             panic!("amount must be > 0");
@@ -157,20 +169,21 @@ impl FeeCalculatorContract {
         }
     }
 
-    fn require_admin_or_settlement_caller(env: &Env, caller: &Address) {
+    fn require_authorized_caller(env: &Env, caller: &Address) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if &admin == caller {
+        if caller == &admin {
             return;
         }
-
-        let settlement_caller: Address = env
+        if let Some(settlement_caller) = env
             .storage()
             .instance()
-            .get(&DataKey::SettlementCaller)
-            .expect("settlement caller not set");
-        if &settlement_caller != caller {
-            panic!("Not authorized");
+            .get::<DataKey, Address>(&DataKey::SettlementCaller)
+        {
+            if caller == &settlement_caller {
+                return;
+            }
         }
+        panic!("Not authorized");
     }
 
     fn validate_tiers(tiers: &Vec<FeeTier>) {
